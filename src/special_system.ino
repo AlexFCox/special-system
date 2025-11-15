@@ -71,6 +71,9 @@ PlantState plants[NUM_PLANTS];
 unsigned long lastSensorRead_ms = 0;
 unsigned int currentReadInterval_ms = NORMAL_READ_INTERVAL_MS;
 
+// Connection tracking
+String connectionStatus = "ok";
+
 // ============================================
 // SENSOR READING FUNCTIONS
 // ============================================
@@ -91,7 +94,7 @@ int readSoilMoisture(int plantId) {
     int rawValue = analogRead(soilMoisturePins[plantId]);
     
     // Debug output
-    Serial.println("Plant " + String(plantId) + " - Soil Moisture Raw: " + String(rawValue));
+    //Serial.println("Plant " + String(plantId) + " - Soil Moisture Raw: " + String(rawValue));
     
     return rawValue;
 }
@@ -112,7 +115,7 @@ float readHumidity(int plantId) {
     float humidity = hts221_sensors[0].readHumidity();
     
     // Debug output
-    Serial.println("Plant " + String(plantId) + " - Humidity: " + String(humidity) + " %");
+    //Serial.println("Plant " + String(plantId) + " - Humidity: " + String(humidity) + " %");
     
     return humidity;
 }
@@ -133,7 +136,7 @@ float readTemperature(int plantId) {
     float temperature = hts221_sensors[0].readTemperature();
     
     // Debug output
-    Serial.println("Plant " + String(plantId) + " - Temperature: " + String(temperature) + " °C");
+    //Serial.println("Plant " + String(plantId) + " - Temperature: " + String(temperature) + " °C");
     
     return temperature;
 }
@@ -263,6 +266,108 @@ void printSensorData() {
 }
 
 /**
+ * Check if enough time has elapsed to read sensors again
+ * @return true if sensors should be read, false otherwise
+ */
+bool shouldReadSensors() {
+    unsigned long currentTime = millis();
+    unsigned long timeSinceLastRead = currentTime - lastSensorRead_ms;
+    
+    // Check if enough time has passed based on current interval
+    if (timeSinceLastRead >= currentReadInterval_ms) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Build JSON string with all sensor data for publishing
+ * @return JSON formatted string
+ */
+String buildSensorJSON() {
+    String json = "{";
+    
+    // Add timestamp
+    json += "\"timestamp\":" + String(millis()) + ",";
+    
+    // Add connection status
+    json += "\"connection\":\"" + connectionStatus + "\",";
+    
+    // Add plants array
+    json += "\"plants\":[";
+    
+    for (int i = 0; i < NUM_PLANTS; i++) {
+        json += "{";
+        json += "\"id\":" + String(i) + ",";
+        
+        // Soil moisture
+        json += "\"soilMoisture\":{";
+        json += "\"value\":" + String(plants[i].soilMoisture) + ",";
+        json += "\"percent\":" + String(moistureToPercent(i, plants[i].soilMoisture)) + ",";
+        json += "\"status\":\"" + plants[i].soilMoistureStatus + "\",";
+        json += "\"errorCount\":" + String(plants[i].soilMoistureErrorCount);
+        json += "},";
+        
+        // Humidity
+        json += "\"humidity\":{";
+        json += "\"value\":" + String(plants[i].humidity, 1) + ",";
+        json += "\"status\":\"" + plants[i].humidityStatus + "\",";
+        json += "\"errorCount\":" + String(plants[i].humidityErrorCount);
+        json += "},";
+        
+        // Temperature
+        json += "\"temperature\":{";
+        json += "\"value\":" + String(plants[i].temperature, 1) + ",";
+        json += "\"status\":\"" + plants[i].temperatureStatus + "\",";
+        json += "\"errorCount\":" + String(plants[i].temperatureErrorCount);
+        json += "}";
+        
+        json += "}";
+        
+        // Add comma if not last plant
+        if (i < NUM_PLANTS - 1) {
+            json += ",";
+        }
+    }
+    
+    json += "]";  // Close plants array
+    json += "}";  // Close main object
+    
+    return json;
+}
+
+/**
+ * Publish sensor data to Particle Cloud
+ */
+void publishSensorData() {
+    if (!Particle.connected()) {
+        Serial.println("⚠ Not connected - skipping publish");
+        return;
+    }
+    
+    String jsonData = buildSensorJSON();
+    bool success = Particle.publish("sensors/all", jsonData, PRIVATE);
+    
+    if (success) {
+        Serial.println("✓ Published to cloud");
+    } else {
+        Serial.println("✗ Publish failed");
+    }
+}
+
+/**
+ * Update connection status based on Particle Cloud connectivity
+ */
+void updateConnectionStatus() {
+    if (Particle.connected()) {
+        connectionStatus = "ok";
+    } else {
+        connectionStatus = "lost";
+    }
+}
+
+/**
  * Validate if a sensor reading is within acceptable range
  * @param value The sensor reading to validate
  * @param minValue Minimum acceptable value
@@ -351,12 +456,16 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
-    // Read all sensors
-    readAllSensors();
+    // Update connection status
+    updateConnectionStatus();
     
-    // Display formatted data
-    printSensorData();
+    if (shouldReadSensors()) {
+        readAllSensors();
+        lastSensorRead_ms = millis();
+        
+        publishSensorData();
+        printSensorData();
+    }
     
-    // Wait 3 seconds before next read
-    delay(3000);
+    delay(100);
 }
