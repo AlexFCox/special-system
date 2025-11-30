@@ -1,5 +1,10 @@
 {
     "particle.targetDevice": "ChipTing",
     "particle.targetPlatform": "p2",
-    "particle.firmwareVersion": "6.2.1"
+    "particle.firmwareVersion": "6.2.1",
+    "files.associations": {
+        "": "",
+        "*.html": "jinja-html",
+        "print": "cpp"
+    }
 }

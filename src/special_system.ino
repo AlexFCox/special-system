@@ -17,8 +17,8 @@ const bool SIMULATION_MODE = false;
 const unsigned long NORMAL_READ_INTERVAL_MS = 30000;       // 30 seconds
 const unsigned long POST_WATERING_READ_INTERVAL_MS = 5000; // 5 seconds
 const unsigned long POST_WATERING_DURATION_MS = 60000;     // 1 minute
-const unsigned long VALVE_OPEN_DURATION_MS = 1000;         // 1 second
-const unsigned long MAX_VALVE_OPEN_TIME_MS = 2000;         // 2 seconds (safety)
+const unsigned long VALVE_OPEN_DURATION_MS = 2000;         // 2 second
+const unsigned long MAX_VALVE_OPEN_TIME_MS = 3000;         // 3 seconds
 
 // Error detection
 const int SENSOR_ERROR_THRESHOLD = 5; // consecutive failed reads
@@ -32,12 +32,8 @@ const int soilMoisturePins[NUM_PLANTS] = {A0, A1};
 // ============================================
 // VALVE/RELAY CONFIGURATION
 // ============================================
-// GPIO-controlled relay configuration
-const int VALVE_PIN = D10;  // Single relay on D10
-
-// Plant to valve mapping (both plants use same valve for testing)
-// When you get more relays, you can add more pins
-const int PLANT_TO_VALVE_MAP[NUM_PLANTS] = {0, 0};  // Both plants -> valve 0 for now
+const int VALVE_PINS[] = {D10, D7};  // Two relays
+const int PLANT_TO_VALVE_MAP[NUM_PLANTS] = {0, 1};  // Plant 0 -> Valve 0 (D10), Plant 1 -> Valve 1 (D7)
 
 // Calibration values for soil moisture sensors
 // These will be populated during calibration in Phase 1
@@ -347,23 +343,20 @@ void printSensorData()
  * @param valveId The valve index (0 to NUM_VALVES-1)
  */
 void openValve(int valveId) {
-    // Validate valve ID
     if (valveId < 0 || valveId >= NUM_VALVES) {
         Serial.println("ERROR: Invalid valve ID " + String(valveId));
         return;
     }
     
-    // Check if valve is already open
     if (valves[valveId].isOpen) {
         Serial.println("WARNING: Valve " + String(valveId) + " is already open");
         return;
     }
     
-    // Open the valve (LOW = open for this relay)
-    digitalWrite(VALVE_PIN, LOW);
-    Serial.println("🚰 Opening valve " + String(valveId) + " (D10 -> LOW)");
+    // Open the valve (HIGH = open)
+    digitalWrite(VALVE_PINS[valveId], HIGH);
+    Serial.println("🚰 Opening valve " + String(valveId) + " (D" + String(VALVE_PINS[valveId]) + " -> LOW)");
     
-    // Update valve state
     valves[valveId].isOpen = true;
     valves[valveId].openStartTime_ms = millis();
 }
@@ -373,23 +366,20 @@ void openValve(int valveId) {
  * @param valveId The valve index (0 to NUM_VALVES-1)
  */
 void closeValve(int valveId) {
-    // Validate valve ID
     if (valveId < 0 || valveId >= NUM_VALVES) {
         Serial.println("ERROR: Invalid valve ID " + String(valveId));
         return;
     }
     
-    // Check if valve is already closed
     if (!valves[valveId].isOpen) {
         Serial.println("INFO: Valve " + String(valveId) + " is already closed");
         return;
     }
     
-    // Close the valve (HIGH = closed)
-    digitalWrite(VALVE_PIN, HIGH);
-    Serial.println("🛑 Closing valve " + String(valveId) + " (D10 -> HIGH)");
+    // Close the valve (LOW = closed)
+    digitalWrite(VALVE_PINS[valveId], LOW);
+    Serial.println("🛑 Closing valve " + String(valveId) + " (D" + String(VALVE_PINS[valveId]) + " -> LOW)");
     
-    // Update valve state
     valves[valveId].isOpen = false;
 }
 
@@ -806,8 +796,11 @@ void setup()
     Serial.println("=================================\n");
 
     // Initialize relay pin (replace I2C initialization)
-    pinMode(VALVE_PIN, OUTPUT);
-    digitalWrite(VALVE_PIN, HIGH);  // HIGH = closed (relay is normally closed)
+// Initialize both valve pins
+    for (int i = 0; i < NUM_VALVES; i++) {
+        pinMode(VALVE_PINS[i], OUTPUT);
+        digitalWrite(VALVE_PINS[i], LOW);  // LOW = closed
+    }
     Serial.println("Relay pin initialized (D10)");
     
     // Initialize valve states
@@ -822,6 +815,17 @@ void setup()
 
     Particle.function("water", waterPlant);
     Serial.println("Cloud function 'water' registered");
+    // Add this NEW code:
+Serial.println("\nWaiting for cloud connection...");
+waitFor(Particle.connected, 30000);  // Wait up to 30 seconds
+
+if (Particle.connected()) {
+    Serial.println("✓ Cloud connected!");
+    Serial.println("✓ Device ready to receive function calls");
+} else {
+    Serial.println("❌ Cloud NOT connected after 30 seconds");
+    Serial.println("❌ Function calls will not work");
+}
 
     if (SIMULATION_MODE)
     {
