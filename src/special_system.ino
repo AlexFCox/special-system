@@ -858,7 +858,7 @@ void setup() {
     for (int i = 0; i < NUM_PLANTS; i++) {
         Serial.print("Initializing sensor " + String(i) + "...");
 
-        if (hts221_sensors[i].begin()) {
+        if (hts221_sensors[0].begin()) {
             Serial.println(" SUCCESS!");
         } else {
             Serial.println(" FAILED!");
