@@ -1,2 +1,2 @@
 # special-system
-Final IOT Abschlussarbeit
+IOT Fun (Created as part of the IOT Module at ZHAW)
